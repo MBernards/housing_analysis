@@ -16,32 +16,24 @@ def index():
     house_value = 300e3 * (1 + 0.04 / 12)**month_arr
 ##################################
 
-    controls = {
-        "house_price": Slider(title="House Price (thousands)", start=200, value=350, end=1000, step=10),
-        "housing_return": Slider(title="Housing Returns", start=0, end=25, value=10, step=1)
-    }
 
-    controls_array = controls.values()
+    house_price = Slider(title="House Price (thousands)", start=200, value=350, end=1000, step=10),
+    housing_return = Slider(title="Housing Returns", start=0, end=25, value=10, step=1)
+
+    controls_array = [house_price, housing_return]
     
     source = ColumnDataSource(data=dict(
-        months = month_arr,
+        x = month_arr,
         home_value = house_value
     ))
 
-    callback = CustomJS(args=dict(source = source, controls=controls), code="""
+    callback = CustomJS(args=dict(source = source, house_price=house_price, housing_return=housing_return), code="""
+        const price = house_price.value
+        const return = housing_return.value
 
-        var data_length = full_data.months.length;
-        # console.log(date_length)
-
-        for (var i = 0; i < data_length; i++) {
-            source.data.house_value[i] = controls.house_price.value*controls.housing_return.value**i;
-        }
-
-        console.log(new_data.months);
-
-        source.data = new_data;
-        source.change.emit();
-    
+        const x = source.data.x
+        const home_value = Array.from(x, (x) => price * Math.pow((return),x))
+        source.data = { x, home_value }
     """)
 
     fig = figure(height=600, width=720, tooltips=[("Title", "@title"), ("Released", "@released")])
@@ -49,8 +41,8 @@ def index():
     fig.xaxis.axis_label = "Months"
     fig.yaxis.axis_label = "Value ($)"
 
-    for control in controls_array:
-        control.js_on_change('value', callback)
+    house_price.js_on_change('value', callback)
+    housing_return.js_on_change('value', callback)
 
     inputs_column = column(*controls_array, width=320, height=1000)
     layout_row = row([ inputs_column, fig ])
