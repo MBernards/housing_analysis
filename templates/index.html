@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Housing Calculator</title>
     {{ js_resources|indent(4)|safe }}
     {{ css_resources|indent(4)|safe }}
     {{ plot_script|indent(4)|safe }}
 </head>
 <body>
-    <h1 style="text-align: center; margin-bottom: 40px;">Rent vs. Buy</h1>
+    <h1 style="text-align: center; margin-bottom: 40px;">Buying vs. Renting Housing</h1>
     <div style="display: flex; justify-content: center;">
         {{ plot_div|indent(4)|safe }}
     </div>

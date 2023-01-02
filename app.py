@@ -1,59 +1,102 @@
 from flask import Flask, render_template
-from bokeh.models import ColumnDataSource, Div, Slider
-from bokeh.io import curdoc
+from bokeh.models import ColumnDataSource, Slider
 from bokeh.resources import INLINE
 from bokeh.embed import components
-from bokeh.layouts import column, row
 from bokeh.plotting import figure
-import numpy as np
+from bokeh.layouts import column, row
 from bokeh.models.callbacks import CustomJS
+import numpy as np
 
 app = Flask(__name__)
 
+x = np.arange(120)
+
 @app.route('/')
 def index():
-    month_arr = np.arange(120)
-    house_value = 300e3 * (1 + 0.04 / 12)**month_arr
-##################################
 
-
-    house_price = Slider(title="House Price (thousands)", start=200, value=350, end=1000, step=10),
-    housing_return = Slider(title="Housing Returns", start=0, end=25, value=10, step=1)
-
-    controls_array = [house_price, housing_return]
-    
-    source = ColumnDataSource(data=dict(
-        x = month_arr,
-        home_value = house_value
+    source = ColumnDataSource(data = dict(
+        x = x,
+        savings_rent = 0*x,
+        nw_rent = 0*x,
+        nw_buy = 0*x,
+        home_equity = 0*x,
+        investment_equity = 0*x,
     ))
 
-    callback = CustomJS(args=dict(source = source, house_price=house_price, housing_return=housing_return), code="""
-        const price = house_price.value
-        const return = housing_return.value
+    income = Slider(title="Takehome Income - Expenses ($, thoousands)", start=30, end=120, value=60, step=5)
+    rent = Slider(title="Rent ($)", value=1000, start=500, end=4000, step=50)
+    home_price = Slider(title="Home price ($, thousands)", value=250, start=150, end=850, step=10)
+    investment_returns = Slider(title="Investment Returns (%/yr)", start=0, end=20, value=10, step=1)
+    down_payment = Slider(title="Downpayment (%)", value=10, start=0, end=20, step=1)
+    house_appreciation = Slider(title="House appreciation (%/yr)", value=4, start=0, end=12, step=0.5)
+    interest = Slider(title="Loan Interest (%)", value=7.5, start=0, end=12, step=0.5)
 
-        const x = source.data.x
-        const home_value = Array.from(x, (x) => price * Math.pow((return),x))
-        source.data = { x, home_value }
+    callback = CustomJS(args=dict(source=source, home_price=home_price, rent=rent, investment_returns=investment_returns, income=income, down_payment=down_payment, house_appreciation=house_appreciation, interest=interest), code="""
+        const data = source.data;
+
+        const h_p = home_price.value;
+        const R = rent.value/1000;
+        const i_r = investment_returns.value/1200;
+        const I = income.value/12;
+        const h_dp = down_payment.value * h_p / 100;
+        const h_a = house_appreciation.value/1200;
+        const Interest = interest/1200;
+        const Mortgage = h_p * (Interest * Math.pow((1 + Interest), 360)) / (Math.pow((1 + Interest), 360) - 1);
+
+        const x = data['x']
+        const savings_rent = data['savings_rent']
+        const nw_rent = data['nw_rent']
+        const nw_buy = data['nw_buy']
+        const home_equity = data['home_equity']
+        const investment_equity = data['investment_equity']
+
+        for (let i = 0; i < x.length; i++) {
+            home_equity[i] = h_p * (-1.07 + Math.pow(1+h_a, x[i]));
+
+            savings_rent[i] = I - R*Math.pow(1+h_a, x[i]);
+            if (i == 0){
+                nw_rent[i] = savings_rent[i] + h_dp;
+                //investment_equity[i] = I - Mortgage;
+            }
+            else {
+                nw_rent[i] = nw_rent[i-1] * (1+i_r) + savings_rent[i];
+                //investment_equity[i] = investment_equity[i-1] * (1+i_r) + (I - Mortgage);
+            }
+            
+            investment_equity[i] = h_p * (Interest * Math.pow((1 + Interest), 360));
+
+            nw_buy[i] = home_equity[i] + investment_equity[i];
+            
+        }
+        source.change.emit();
     """)
 
-    fig = figure(height=600, width=720, tooltips=[("Title", "@title"), ("Released", "@released")])
-    fig.line(x="months", y="home_value", source=source)
-    fig.xaxis.axis_label = "Months"
-    fig.yaxis.axis_label = "Value ($)"
+    income.js_on_change('value', callback)
+    home_price.js_on_change('value', callback)
+    down_payment.js_on_change('value', callback)
+    rent.js_on_change('value', callback)
+    investment_returns.js_on_change('value', callback)
+    house_appreciation.js_on_change('value', callback)
+    interest.js_on_change('value', callback)
 
-    house_price.js_on_change('value', callback)
-    housing_return.js_on_change('value', callback)
+    fig = figure(height=600, width=720, tooltips=[("t", "@x"), ("Buy", "@nw_buy"), ("Rent", "@nw_rent"), ("M", "@investment_equity")])
+    fig.line(x="x", y="nw_rent", source=source, line_width=2, color='blue', legend_label = 'Cumulative savings - Renting')
+    fig.line(x="x", y="nw_buy", source=source, line_width=2, color='red', legend_label = 'Cumulative savings - Buying')
+    fig.line(x="x", y="investment_equity", source=source, line_width=2, color='green', legend_label = 'Investment Equity')
+    fig.xaxis.axis_label = "Time (months)"
+    fig.yaxis.axis_label = "Dollars (thousands)"
 
-    inputs_column = column(*controls_array, width=320, height=1000)
+    inputs_column = column([income, home_price, down_payment, house_appreciation, interest, rent, investment_returns], width=320, height=1000)
     layout_row = row([ inputs_column, fig ])
 
     script, div = components(layout_row)
-    return render_template('index.html',
+    return render_template(
+        'index.html',
         plot_script=script,
         plot_div=div,
         js_resources=INLINE.render_js(),
-        css_resources=INLINE.render_css(),
-    ).encode(encoding='UTF-8')
+        css_resources=INLINE.render_css()
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)
